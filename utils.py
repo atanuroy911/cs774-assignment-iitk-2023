@@ -8,10 +8,12 @@ import os
 import sys
 import random
 
+import requests
+from tqdm import tqdm
+
 
 def download_dataset():
     print('Downloading CIFAR Dataset')
-    import requests
     import tarfile
     print('Download Complete. Extracting ...')
     url = "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz"
@@ -19,6 +21,20 @@ def download_dataset():
     file = tarfile.open(fileobj=response.raw, mode="r|gz")
     file.extractall(path=".")
     print('Extraction Completed')
+
+
+class DownloadProgressBar(tqdm):
+    def update_to(self, b=1, bsize=1, tsize=None):
+        if tsize is not None:
+            self.total = tsize
+        self.update(b * bsize - self.n)
+
+
+def download_url(url, output_path):
+    with DownloadProgressBar(unit='B', unit_scale=True,
+                             miniters=1, desc=url.split('/')[-1]) as t:
+        urllib.request.urlretrieve(url, filename=output_path, reporthook=t.update_to)
+
 
 
 # Function for checking the internet connectivity
@@ -29,6 +45,10 @@ def connect(host='http://google.com'):
         return True
     except:
         return False
+
+def url_exists(path):
+    r = requests.head(path)
+    return r.status_code == requests.codes.ok
 
 
 # Unpack the dataset using pickle library
@@ -104,8 +124,8 @@ def img_enhancement(img):
 
 
 def img_posterization(img):
-    random_x = random.randint(0, 255)
-    random_y = random.randint(0, 255)
+    random_x = random.randint(30, 50)
+    random_y = random.randint(100, 150)
     imin = min(random_x, random_y)
     imax = max(random_x, random_y)
     range_pxl = abs(imax - imin)
@@ -215,7 +235,7 @@ def get_feat_vec(images, obj):
     feat_vec = []
     count = 1
     for img in images:
-        print(count)
+        # print(count)
         img = cv2.resize(img, (224, 224))
         img = np.transpose(img, (2, 1, 0))
         # Performing Normalization before sending into ResNet model

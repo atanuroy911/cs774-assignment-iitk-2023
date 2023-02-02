@@ -2,6 +2,7 @@
 # https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz
 import os
 import shutil
+import urllib
 from pathlib import Path
 from os.path import exists
 import numpy as np
@@ -11,14 +12,15 @@ import torch
 from matplotlib import pyplot as plt
 from matplotlib import use as mpl_use
 from pyfiglet import Figlet
+from tqdm import tqdm
 
 from feature_extractor import BBResNet18
 from mlp import get_one_hot_vector, Model
 from utils import unpickle, connect, download_dataset, preprocessing, img_enhancement, random_rotation, \
-    contrast_and_flip, img_posterization, get_augmented_images, get_feat_vec
+    contrast_and_flip, img_posterization, get_augmented_images, get_feat_vec,download_url, url_exists
 
 f = Figlet(font='slant')
-print(f.renderText('CS774 Assignment 1'))
+print(f.renderText('CS776 Assignment 1'))
 
 # Check for internet
 print(
@@ -47,6 +49,7 @@ elif dir_exists:
 else:
     print('Dataset Unavailable. Connecting to internet ...')
     download_dataset()
+
 
 # Load the dataset
 
@@ -105,28 +108,60 @@ print(f.renderText('Question 3: Augmented Images'))
 
 # Generating Augmented Images
 cifar_augmented_dir = './cifar-10-batches-augmented-py'
+# Check whether the specified path exists or not
+isExist = os.path.exists(cifar_augmented_dir)
+if not isExist:
+    # Create a new directory because it does not exist
+    os.makedirs(cifar_augmented_dir)
+    print("The new directory (cifar-10-batches-augmented-py) is created!")
+
 print('Checking for preprocessed augmented data')
-if exists(cifar_augmented_dir + '/augmented_batch.npy') and exists(cifar_augmented_dir + '/augmented_batch_labels.npy'):
+if os.path.exists(cifar_augmented_dir + '/augmented_batch.npy') and os.path.exists(
+        cifar_augmented_dir + '/augmented_batch_labels.npy'):
     print('Preprocessed augmented data found. Loading Data')
     augmented_train_set = np.load(cifar_augmented_dir + '/augmented_batch.npy')
     augmented_train_labels = np.load(cifar_augmented_dir + '/augmented_batch_labels.npy')
 else:
-    print('Preprocessed augmented data NOT found. Regenerating Data')
-    train_augmented_img, train_augmented_labels = get_augmented_images(org_train_images, train_data['labels'])
-    augmented_train_set = np.vstack([org_train_images, train_augmented_img])
-    augmented_train_labels = train_data['labels'] + train_augmented_labels
-    np.save(cifar_augmented_dir + '/augmented_batch.npy', augmented_train_set)
-    np.save(cifar_augmented_dir + '/augmented_batch_labels.npy', augmented_train_labels)
+    print('Preprocessed augmented data NOT found. Checking Online ...')
+    aug_batch_url = "https://cse.iitk.ac.in/users/atanusroy/augmented_batch.npy";
+    aug_batch_labels_url = "https://cse.iitk.ac.in/users/atanusroy/augmented_batch_labels.npy";
+    if url_exists(aug_batch_url) and url_exists(aug_batch_labels_url):
+        download_url(aug_batch_url, cifar_augmented_dir + '/augmented_batch.npy')
+        download_url(aug_batch_labels_url, cifar_augmented_dir + '/augmented_batch_labels.npy')
+        augmented_train_set = np.load(cifar_augmented_dir + '/augmented_batch.npy')
+        augmented_train_labels = np.load(cifar_augmented_dir + '/augmented_batch_labels.npy')
+    else:
+        print('File Not Available Online. Regenerating Augmented Dataset ...')
+        train_augmented_img, train_augmented_labels = get_augmented_images(org_train_images, train_data['labels'])
+        augmented_train_set = np.vstack([org_train_images, train_augmented_img])
+        augmented_train_labels = train_data['labels'] + train_augmented_labels
+        np.save(cifar_augmented_dir + '/augmented_batch.npy', augmented_train_set)
+        np.save(cifar_augmented_dir + '/augmented_batch_labels.npy', augmented_train_labels)
+        print('Augmented Data Shape: ', train_augmented_img.shape)
     print("Original Data Shape: ", org_train_images.shape)
-    print('Augmented Data Shape: ', train_augmented_img.shape)
-
 print('Size of New Training Data Set: ', len(augmented_train_set))
 print(f.renderText('Question 4: Feature Vector'))
 
 obj = BBResNet18()
 
+model_dir = './models'
+# Check whether the specified path exists or not
+isExist = os.path.exists(model_dir)
+if not isExist:
+    # Create a new directory because it does not exist
+    os.makedirs(model_dir)
+    print("The new directory (models) is created!")
 
-if exists('./feature_vectors/original_train_feature_vector.npy') and exists('./feature_vectors/original_test_feature_vector.npy'):
+feature_vec_dir = './feature_vectors'
+# Check whether the specified path exists or not
+isExist = os.path.exists(feature_vec_dir)
+if not isExist:
+    # Create a new directory because it does not exist
+    os.makedirs(feature_vec_dir)
+    print("The new directory (feature_vec_dir) is created!")
+
+if exists('./feature_vectors/original_train_feature_vector.npy') and exists(
+        './feature_vectors/original_test_feature_vector.npy'):
     print("Loading Original Data Training Feature Vector")
 
     original_train_feat_vec = np.load('./feature_vectors/original_train_feature_vector.npy')
@@ -142,12 +177,20 @@ else:
 
 print(f.renderText('Question 5 & 6(a): MLP Implementation'))
 
+model_weights_dir = './model_weights'
+# Check whether the specified path exists or not
+isExist = os.path.exists(model_weights_dir)
+if not isExist:
+    # Create a new directory because it does not exist
+    os.makedirs(model_weights_dir)
+    print("The new directory (model_weights) is created!")
+
 labels = np.arange(10)
 print("Training on Un-Augmented Datasets")
 train_labels = get_one_hot_vector(train_data['labels'])
 test_labels = get_one_hot_vector(test_data['labels'])
 unaugmented_model = Model(original_train_feat_vec, train_labels, original_test_feat_vec, test_labels, './model_weights',
-                          './output', isModelWeightsAvailable=1, epochs=500, batch_size=128, learning_rate=0.01,
+                          './output', isModelWeightsAvailable=0, epochs=100, batch_size=128, learning_rate=0.01,
                           augmented=False)
 torch.save(unaugmented_model, './models/unaugmented_model')
 print(f.renderText('Question 6 (b): Back Propagation'))
@@ -168,6 +211,6 @@ print("Training on Augmented Datasets")
 aug_train_labels = get_one_hot_vector(augmented_train_labels)
 augmented_model = Model(augmented_train_feat_vec, aug_train_labels, original_test_feat_vec, test_labels,
                         './model_weights',
-                        './output', isModelWeightsAvailable=0, epochs=500, batch_size=128, learning_rate=0.01,
+                        './output', isModelWeightsAvailable=0, epochs=100, batch_size=128, learning_rate=0.01,
                         augmented=True)
 torch.save(augmented_model, './models/augmented_model')

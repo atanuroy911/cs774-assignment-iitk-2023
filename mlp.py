@@ -1,4 +1,5 @@
 # from audioop import cross
+import os
 from cProfile import label
 import numpy as np
 import matplotlib.pyplot as plt
@@ -59,77 +60,71 @@ class MLP(object):
             self.biases = read_weights['biases']
         else:
             print("Initialising weights and biases")
+
             self.weights = [np.random.randn(y, x) * 0.1 for x, y in
-                            zip(input_size[:-1], input_size[1:])]  # np.random.normal(0, 2/x, (y, x))
-            self.biases = [np.zeros((x, 1)) for x in input_size[1:]]
+                            zip(input_size[:-2], input_size[1:-1])] + [
+                               np.random.randn(input_size[-1], input_size[-2]) * 0.1]
+            self.biases = [np.zeros((x, 1)) for x in input_size[1:-1]] + [np.zeros((input_size[-1], 1))]
+
         print("Weights shape1: ", self.weights[0].shape)
         print("Weights shape2: ", self.weights[1].shape)
+        print("Weights shape3: ", self.weights[2].shape)
 
         print("Bias shape1: ", self.biases[0].shape)
         print("Bias shape2: ", self.biases[1].shape)
+        print("Bias shape3: ", self.biases[2].shape)
 
     def feedforward(self, x):
-        z1 = np.dot(self.weights[0], x) + self.biases[0][:, :x.shape[1]]  # this is beacuse of different batch sizes
-        # print("z1 shape: ", z1.shape)/
+
+        z1 = np.dot(self.weights[0], x) + self.biases[0][:, :x.shape[1]]
         a1 = relu(z1)
-        # print("a1 shape: ", a1.shape)
         z2 = np.dot(self.weights[1], a1) + self.biases[1][:, :a1.shape[1]]
-        # print("z2 shape: ", z2.shape)
-        a2 = softmax(z2.T)
-        # print("a2 shape: ", a2.shape)
-        return z1, a1, z2, a2
+        a2 = relu(z2)
+        z3 = np.dot(self.weights[2], a2) + self.biases[2][:, :a2.shape[1]]
+        a3 = softmax(z3.T)
+
+        return z1, a1, z2, a2, z3, a3
 
     def backpropagation(self, X, y):
 
         delta_w = [np.zeros(w.shape) for w in self.weights]
         delta_b = [np.zeros(b.shape) for b in self.biases]
 
-        z1, a1, z2, a2 = self.feedforward(X)
-        # exit()
+        z1, a1, z2, a2, z3, a3 = self.feedforward(X)
         y = y.argmax(axis=1)
-        loss = cross_entropy_loss(a2, y)
-        # print("Loss: ", loss)
-        a2[range(y.shape[0]), y] -= 1
-        # a2 /= a2.shape[0]
-        error = a2
+        loss = cross_entropy_loss(a3, y)
+        a3[range(y.shape[0]), y] -= 1
+        error = a3
 
-        # derivative of softmax = predicted_output - actual_output
-        # For Hidden Layer
+        # For Output Layer
         delta1 = error.T
-        delta_b[1] = delta1  # np.sum(delta1, axis=0, keepdims=True)
-        delta_w[1] = np.dot(delta1, a1.T)
+        delta_b[2] = delta1
+        delta_w[2] = np.dot(delta1, a2.T)
 
-        # For Input Layer
+        # For Second Hidden Layer
+        deriv_relu = relu(z2, deriv=True)
+        delta2 = np.dot(self.weights[2].T, delta1) * deriv_relu
+        delta_b[1] = delta2
+        delta_w[1] = np.dot(delta2, a1.T)
+
+        # For First Hidden Layer
         deriv_relu = relu(z1, deriv=True)
-        # print("deriv_relu shape: ", deriv_relu.shape)
-        delta2 = np.dot(self.weights[1].T, delta1) * deriv_relu
-        delta_b[0] = delta2
-        # print("delta2 shape: ", delta2.shape)
-        # X = X.reshape(1, 512)
-        delta_w[0] = np.dot(delta2, X.T)
+        delta3 = np.dot(self.weights[1].T, delta2) * deriv_relu
+        delta_b[0] = delta3
+        delta_w[0] = np.dot(delta3, X.T)
 
         return loss, delta_b, delta_w
 
     def evaluate(self, X, y):
 
-        # Here y is single value and x is same as input
         count = 0
         preds = np.array([])
         for x, _y in zip(X, y):
-            # postion of maximum value is the predicted label
-            _, _, _, output = self.feedforward(np.array([x]).T)
-            preds = np.append(preds, np.argmax(output))
-            if np.argmax(output) == np.argmax(_y):
+            _, _, _, _, _, a3 = self.feedforward(np.array([x]).T)
+            preds = np.append(preds, np.argmax(a3))
+            if np.argmax(a3) == np.argmax(_y):
                 count += 1
         return float(count) / X.shape[0], preds
-
-    # def predict(self, X, labels):
-    #     preds = np.array([])
-    #     for x in X:
-    #         _, _, _, outs = self.feedforward(x)
-    #         preds = np.append(preds, labels[np.argmax(outs)])
-    #     # preds = np.array([labels[int(p)] for p in preds])
-    #     return preds
 
     def train(self, X, y, X_test, y_test, learning_rate=0.01, epochs=5, batch_size=100):
         history_training_loss, history_training_acc, history_test_acc, history_test_pred = [], [], [], []
@@ -166,6 +161,11 @@ class MLP(object):
                     size_left = batch_size - delta_b[1].shape[1]
                     delta_b[1] = np.pad(delta_b[1], ((0, 0), (0, size_left)))
 
+                if delta_b[2].shape[1] < batch_size:
+                    # print(delta_b[2].shape)
+                    size_left = batch_size - delta_b[2].shape[1]
+                    delta_b[2] = np.pad(delta_b[2], ((0, 0), (0, size_left)))
+
                 #     #It will encounter only when there's minimum loss is getting as compared to previous batches
                 if loss < loss_min:
                     loss_min = loss
@@ -186,7 +186,7 @@ class MLP(object):
             history_test_acc.append(test_acc)
             history_test_pred.append(test_pred)
             print("Epoch: %d Training loss: %.3f Training accuracy: %.2f Testing Accuracy: %.2f" % (
-            epoch, loss_min, train_acc * 100, test_acc * 100))
+                epoch, loss_min, train_acc * 100, test_acc * 100))
         return np.array(history_training_acc), np.array(history_training_loss), np.array(history_test_acc), np.array(
             history_test_pred), model_weights
 
@@ -194,7 +194,8 @@ class MLP(object):
 def Model(X_train, y_train, X_test, y_test, model_wt_folder, out_folder, isModelWeightsAvailable=0, epochs=500,
           batch_size=32, learning_rate=0.01, augmented=False):
     inp_feats = 512
-    num_hidden = 64
+    num_neurons_1 = 64
+    num_neurons_2 = 64
     num_output = 10
     # batch_size=256
     # learning_rate=0.01
@@ -204,23 +205,30 @@ def Model(X_train, y_train, X_test, y_test, model_wt_folder, out_folder, isModel
     print("learning_rate: ", learning_rate)
     if isModelWeightsAvailable:
         print("Performance measure on test datasets")
-        model = MLP((inp_feats, num_hidden, num_output), model_wt_folder, augmented)
+        model = MLP((inp_feats, num_neurons_1, num_neurons_2, num_output), model_wt_folder, augmented)
         acc, prediction = model.evaluate(X_test, y_test)
         print("Testing Accuracy or Performance Measure in percent: %.2f" % (acc * 100))
     else:
-        model = MLP((inp_feats, num_hidden, num_output), '', augmented)
+        model = MLP((inp_feats, num_neurons_1, num_neurons_2, num_output), '', augmented)
         total_training_acc, total_training_loss, total_testing_acc, total_test_pred, model_weights = model.train(
             X_train, y_train, X_test, y_test, epochs=epochs, batch_size=batch_size, learning_rate=learning_rate)
+        # print(model_weights['weights'].shape)
         if (augmented):
             np.save(model_wt_folder + '/augmented-model_weights.npy', model_weights)
         else:
             np.save(model_wt_folder + '/unaugmented-model_weights.npy', model_weights)
         # acc = model.evaluate(X_test, y_test)
         print("Testing Accuracy or Performance Measure in percent: %.2f at epoch: %d" % (
-        total_testing_acc[np.argmax(total_training_acc)] * 100, np.argmax(total_training_acc) + 1))
+            total_testing_acc[np.argmax(total_training_acc)] * 100, np.argmax(total_training_acc) + 1))
         print("With a loss: %.3f" % (total_training_loss[np.argmax(total_training_acc)]))
         prediction = total_test_pred[np.argmax(total_training_acc)]
-
+        output_dir = './output'
+        # Check whether the specified path exists or not
+        isExist = os.path.exists(output_dir)
+        if not isExist:
+            # Create a new directory because it does not exist
+            os.makedirs(output_dir)
+            print("The new directory (output) is created!")
         plt.figure(figsize=(8, 8))
         plt.plot(np.arange(epochs), total_training_acc, label='Total_trainig_acc')
         plt.plot(np.arange(epochs), total_training_loss, label='Total_training_loss')

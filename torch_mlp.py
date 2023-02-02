@@ -14,9 +14,9 @@ class MLP(pl.LightningModule):
         self.layers = nn.Sequential(
             nn.Linear(32 * 32 * 3, 64),
             nn.ReLU(),
-            nn.Linear(64, 32),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(32, 10)
+            nn.Linear(64, 10)
         )
         self.ce = nn.CrossEntropyLoss()
 
@@ -40,5 +40,5 @@ if __name__ == '__main__':
     dataset = CIFAR10(os.getcwd(), download=True, transform=transforms.ToTensor())
     pl.seed_everything(42)
     mlp = MLP()
-    trainer = pl.Trainer(auto_scale_batch_size='power', gpus=1, deterministic=True, max_epochs=5)
+    trainer = pl.Trainer(auto_scale_batch_size='power', gpus=0, deterministic=True, max_epochs=5)
     trainer.fit(mlp, DataLoader(dataset))
