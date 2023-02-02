@@ -785,11 +785,20 @@ if not isExist:
     print("The new directory (output) is created!")
 
 labels = np.arange(10)
+print("Training on Augmented Datasets")
+
+model_dir = './models'
+# Check whether the specified path exists or not
+isExist = os.path.exists(model_dir)
+if not isExist:
+    # Create a new directory because it does not exist
+    os.makedirs(model_dir)
+    print("The new directory (models) is created!")
 print("Training on Un-Augmented Datasets")
 train_labels = get_one_hot_vector(train_data['labels'])
 test_labels = get_one_hot_vector(test_data['labels'])
 unaugmented_model = Model(original_train_feat_vec, train_labels, original_test_feat_vec, test_labels, './model_weights',
-                          './output', isModelWeightsAvailable=0, epochs=500, batch_size=128, learning_rate=0.01,
+                          './output', isModelWeightsAvailable=0, epochs=5, batch_size=128, learning_rate=0.01,
                           augmented=False)
 torch.save(unaugmented_model, './models/unaugmented_model')
 print(f.renderText('Question 6 (b): Back Propagation'))
@@ -805,21 +814,13 @@ else:
     augmented_train_feat_vec = get_feat_vec(augmented_train_set, obj)
     np.save('./feature_vectors/augmented_train_feature_vector.npy', augmented_train_feat_vec)
 
-print("Training on Augmented Datasets")
 
-model_dir = './models'
-# Check whether the specified path exists or not
-isExist = os.path.exists(model_dir)
-if not isExist:
-    # Create a new directory because it does not exist
-    os.makedirs(model_dir)
-    print("The new directory (models) is created!")
     
 
 aug_train_labels = get_one_hot_vector(augmented_train_labels)
 augmented_model = Model(augmented_train_feat_vec, aug_train_labels, original_test_feat_vec, test_labels,
                         './model_weights',
-                        './output', isModelWeightsAvailable=0, epochs=50, batch_size=128, learning_rate=0.01,
+                        './output', isModelWeightsAvailable=0, epochs=5, batch_size=128, learning_rate=0.01,
                         augmented=True)
 torch.save(augmented_model, './models/augmented_model')
 
@@ -1009,3 +1010,157 @@ def DTC(_X=None, _Xt=None):
     print(metrics.accuracy_score(y_test, Xt_pred))
 
 DTC()
+
+"""# **Logistic Regression**"""
+
+# Things required to unpack the CIFAR-10 library
+import os
+# import h5py
+import six
+from six.moves import range, cPickle
+import tarfile
+
+# Main Library for Matrices manipulation
+import numpy as np
+
+# To draw the images
+import matplotlib.pyplot as plt
+
+import pickle
+
+url = "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz"
+
+
+class DownloadProgressBar(tqdm):
+    def update_to(self, b=1, bsize=1, tsize=None):
+        if tsize is not None:
+            self.total = tsize
+        self.update(b * bsize - self.n)
+
+
+def download_url(url, output_path):
+    with DownloadProgressBar(unit='B', unit_scale=True,
+                             miniters=1, desc=url.split('/')[-1]) as t:
+        urllib.request.urlretrieve(url, filename=output_path, reporthook=t.update_to)
+
+
+# download_url(url, './cifar-10-python.tar.gz')
+
+
+def pydump(obj, filename):
+    with open(filename, 'wb') as f:
+        pickle.dump(obj, f)
+
+
+def pyload(filename):
+    with open(filename, 'rb') as f:
+        return pickle.load(f)
+
+
+def cifar_10():
+    # LOAD TRAINING DATA
+    tar_file = tarfile.open("cifar-10-python.tar.gz", 'r:gz')
+    train_batches = []
+    for batch in range(1, 6):
+        file = tar_file.extractfile(
+            'cifar-10-batches-py/data_batch_%d' % batch)
+        try:
+            if six.PY3:
+                array = cPickle.load(file, encoding='latin1')
+            else:
+                array = cPickle.load(file)
+            train_batches.append(array)
+        finally:
+            file.close()
+
+    train_features = np.concatenate(
+        [batch['data'].reshape(batch['data'].shape[0], 3, 32, 32)
+         for batch in train_batches])
+    train_labels = np.concatenate(
+        [np.array(batch['labels'], dtype=np.uint8)
+         for batch in train_batches])
+    train_labels = np.expand_dims(train_labels, 1)
+
+    # LOAD TEST DATA
+    file = tar_file.extractfile('cifar-10-batches-py/test_batch')
+    try:
+        if six.PY3:
+            test = cPickle.load(file, encoding='latin1')
+        else:
+            test = cPickle.load(file)
+    finally:
+        file.close()
+
+    test_features = test['data'].reshape(test['data'].shape[0],
+                                         3, 32, 32)
+    test_labels = np.array(test['labels'], dtype=np.uint8)
+    test_labels = np.expand_dims(test_labels, 1)
+
+    return train_features, train_labels, test_features, test_labels
+
+
+train_features, train_labels, test_features, test_labels = cifar_10()
+X = train_features.reshape(50000, 3 * 32 * 32)
+Xt = test_features.reshape(10000, 3 * 32 * 32)
+y = train_labels.flatten()
+yt = test_labels.flatten()
+
+linreg = LogisticRegression(verbose=True)
+linreg.fit(X, y)
+
+predicted = linreg.predict(X)
+np.unique((y == 0).astype(np.int8))
+
+predicted_r = np.round(predicted)
+print(metrics.accuracy_score(y, predicted))
+
+test_predicted = linreg.predict(Xt)
+print(metrics.accuracy_score(yt, test_predicted))
+
+"""# **SVM Classifier**"""
+
+import sklearn.svm as svm
+
+
+def SVM_SVC(itr=1, _X=None, _Xt=None):
+    if _X is None:
+        _X = X
+
+    if _Xt is None:
+        _Xt = Xt
+
+    print("[SVM POLY %d] Training" % itr)
+    svc = svm.SVC(max_iter=itr, kernel='poly')
+    svc.fit(X, y)
+
+    print("[SVM POLY %d] Training Accuracy" % itr)
+    X_pred = svc.predict(X)
+    print(metrics.accuracy_score(y, X_pred))
+
+    print("[SVM POLY %d] Testing Accuracy" % itr)
+    Xt_pred = svc.predict(Xt)
+    print(metrics.accuracy_score(yt, Xt_pred))
+
+
+def SVM_SVC_SIG(_X=None, _Xt=None, I=2):
+    if _X is None:
+        _X = X
+
+    if _Xt is None:
+        _Xt = Xt
+
+    print("[SVM SIG %d] Training" % I)
+    svc = svm.SVC(kernel='sigmoid', max_iter=I)
+    svc.fit(X, y)
+
+    print("[SVM SIG %d] Training Accuracy" % I)
+    X_pred = svc.predict(X)
+    print(metrics.accuracy_score(y, X_pred))
+
+    print("[SVM SIG %d] Testing Accuracy" % I)
+    Xt_pred = svc.predict(Xt)
+    print(metrics.accuracy_score(yt, Xt_pred))
+
+
+for i in [500, 1000, 2000, 3000, -1]:
+    SVM_SVC_SIG(I=i)
